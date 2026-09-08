@@ -831,11 +831,13 @@ class OmniVoice(PreTrainedModel):
         def _run_batch(indices, texts, ref_audios, ref_texts):
             speed_list = task.speed
             target_lens = [
-                self._estimate_target_tokens(
-                    texts[j],
-                    ref_texts[j],
-                    ref_audios[j].size(-1) if ref_audios[j] is not None else None,
-                    speed=speed_list[i] if speed_list else 1.0,
+                self._bucket_tokens(
+                    self._estimate_target_tokens(
+                        texts[j],
+                        ref_texts[j],
+                        ref_audios[j].size(-1) if ref_audios[j] is not None else None,
+                        speed=speed_list[i] if speed_list else 1.0,
+                    )
                 )
                 for j, i in enumerate(indices)
             ]
@@ -1000,6 +1002,10 @@ class OmniVoice(PreTrainedModel):
                 else None,
                 speed=item_speed,
             )
+            # Length bucketing (no-op unless OMNIVOICE_DURATION_BUCKET is set).
+            # Skip when the user gave an explicit duration override.
+            if not has_dur:
+                est = self._bucket_tokens(est)
             num_target_tokens_list.append(est)
 
         # Per-item duration overrides: set target_lens to exact frame count
@@ -1045,6 +1051,18 @@ class OmniVoice(PreTrainedModel):
         if speed > 0 and speed != 1.0:
             est = est / speed
         return max(1, int(est))
+
+    def _bucket_tokens(self, est: int) -> int:
+        """Round a target-token estimate up to a fixed bucket (in seconds of
+        audio) when ``OMNIVOICE_DURATION_BUCKET`` is set, so varied texts reuse
+        a small set of tensor shapes and keep compiled kernels warm. Speed is
+        unaffected; the extra frames become trailing silence (trimmed by
+        post-process). Unset -> returned unchanged."""
+        bucket_s = os.environ.get("OMNIVOICE_DURATION_BUCKET")
+        if not bucket_s:
+            return est
+        frames = max(1, int(float(bucket_s) * self.audio_tokenizer.config.frame_rate))
+        return ((est + frames - 1) // frames) * frames
 
     def _ensure_list(
         self, x: Union[Any, List[Any]], batch_size: int, auto_repeat: bool = True

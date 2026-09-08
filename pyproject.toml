@@ -65,28 +65,32 @@ Repository = "https://github.com/k2-fsa/OmniVoice"
 "Bug Tracker" = "https://github.com/k2-fsa/OmniVoice/issues"
 
 [tool.uv.sources]
-# Install PyTorch with CUDA support on Linux/Windows (CUDA doesn't exist for Mac).
+# LOCAL FORK: this checkout runs on AMD ROCm (RX 9060 XT / gfx1200), not CUDA.
+# Upstream points these at the "pytorch-cuda" index; leaving that in place means
+# a `uv sync` would replace the installed ROCm build with a CUDA one.
 # NOTE: We must explicitly request them as `dependencies` above. These improved
 # versions will not be selected if they're only third-party dependencies.
 torch = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
 ]
 torchaudio = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cuda"
-# Use PyTorch built for NVIDIA Toolkit version 12.8.
-# Available versions: https://pytorch.org/get-started/locally/
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-rocm"
+# Matches how .venv was actually built:
+#   pip install --index-url https://download.pytorch.org/whl/rocm7.1 torch torchaudio
+url = "https://download.pytorch.org/whl/rocm7.1"
 # Only use this index when explicitly requested by `tool.uv.sources`.
 explicit = true
 
 [tool.uv]
+# LOCAL FORK: upstream pins 2.8.0 here, which would both downgrade and de-ROCm
+# the installed build. Pinned to exactly what is in .venv; bump deliberately.
 constraint-dependencies = [
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
+    "torch==2.12.1+rocm7.1",
+    "torchaudio==2.11.0+rocm7.1",
 ]
 
 [tool.hatch.build.targets.sdist]
